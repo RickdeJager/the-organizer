@@ -30,10 +30,12 @@ class Task:
         self.url = meta["padUrl"]
         self.desc = meta["description"]
         self.title = meta["title"]
-        self.category = meta["category"]
         self.solved = meta["solved"]
         self.flag = meta["flag"]
         self.people = meta["workOnTasks"]
+
+        tags = meta["assignedTags"]["nodes"]
+        self.category = tags[0]["tag"]["tag"] if len(tags) > 0 else "unknown"
 
     def __repr__(self):
         return f"Task: {self.title} ({self.category}) @ {self.url}"
@@ -45,7 +47,6 @@ class Task:
         query = gql.gql(queries.update_task)
         result = await self.client.execute_async(query, variable_values={
             "id": self.id,
-            "category": self.category,
             "title": self.title,
             "description": self.desc,
             "flag": self.flag,
@@ -187,11 +188,13 @@ class CTF:
         if present_task:
             return present_task[0]
 
+        print(queries.create_task)
         query = gql.gql(queries.create_task)
+        print(query)
 
         result = await self.client.execute_async(query, variable_values={
             "ctfId": self.id,
-            "category": category,
+            "tags": [category],
             "title": name,
             "description": description,
             "flag": flag,
@@ -597,15 +600,18 @@ async def add_task(ctx: discord_slash.SlashContext, created, name: str,
     if current_ctf is None: return
     result = await current_ctf.createTask(name, category, description, flag, solved_prefix = solved_prefix)
     if ctx is not None:
+        task_id = result["createTask"]["task"]["id"]
+        task_title = result["createTask"]["task"]["title"]
+        task_pad_url = result["createTask"]["task"]["padUrl"]
         # discord trick: <URL> does not show link previews, while URL does
         ctfnote_url = "\nctfnote url: " + \
-            f"<{URL}#/ctf/{current_ctf.id}-{slugify(current_ctf.name)}/task/{result.id}-{slugify(result.title)}>"
-        hackmd_url = "\nhackmd (in case the other is broken): " + f"<{URL}{result.url}>"
+            f"<{URL}#/ctf/{current_ctf.id}-{slugify(current_ctf.name)}/task/{task_id}-{slugify(task_title)}>"
+        hackmd_url = "\nhackmd (in case the other is broken): " + f"<{URL}{task_pad_url}>"
         # we need to save the ctf id somewhere to distinguish between concurrent ctfs.
         # Note: the pinned message is identified by containing the word "botdb" and "ctfnote url:".
         botdb = json.dumps({
             'ctfid': current_ctf.id,
-            'chalid': result.id,
+            'chalid': task_id,
             })
         bot_data_store = f"\n||botdb:{botdb}||"
         msg = await created.send(ctfnote_url + hackmd_url + bot_data_store)

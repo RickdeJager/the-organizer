@@ -165,13 +165,34 @@ get_full_ctf = """
                     endTime  logoUrl  startTime  weight  title
                 }
 
+
                 fragment TaskFragment on Task {  
-                      id  title  ctfId  padUrl  description  flag  
-                    solved  category  workOnTasks {    
-                        nodes {      
+                    id  title  ctfId  padUrl  description  flag solved
+                    assignedTags {
+                      nodes {
+                        ...AssignedTagsFragment
+                      }
+                    }
+                    workOnTasks {   
+                        nodes { 
                             ...WorkingOnFragment
                         }
                     }
+                }
+
+                fragment AssignedTagsFragment on AssignedTag {
+                  nodeId
+                  taskId
+                  tagId
+                  tag {
+                    ...TagFragment
+                  }
+                }
+
+                fragment TagFragment on Tag {
+                  nodeId
+                  id
+                  tag
                 }
 
                 fragment WorkingOnFragment on WorkOnTask {  
@@ -194,9 +215,9 @@ get_full_ctf = """
 
 create_task = """
             mutation createTaskForCtfId(
-            $ctfId: Int!, $title: String!, $category: String, $description: String, $flag: String) { 
+            $ctfId: Int!, $title: String!, $tags: [String], $description: String, $flag: String) { 
                 createTask(input: {
-                    ctfId: $ctfId, title: $title, category: $category, 
+                    ctfId: $ctfId, title: $title, tags: $tags, 
                     description: $description, flag: $flag
                 }) {
                     task {
@@ -206,12 +227,32 @@ create_task = """
             }
 
             fragment TaskFragment on Task {  
-                  id  title  ctfId  padUrl  description  flag
-                solved  category  workOnTasks {   
+                id  title  ctfId  padUrl  description  flag solved
+                assignedTags {
+                  nodes {
+                    ...AssignedTagsFragment
+                  }
+                }
+                workOnTasks {   
                     nodes { 
                         ...WorkingOnFragment
                     }
                 }
+            }
+
+            fragment AssignedTagsFragment on AssignedTag {
+              nodeId
+              taskId
+              tagId
+              tag {
+                ...TagFragment
+              }
+            }
+
+            fragment TagFragment on Tag {
+              nodeId
+              id
+              tag
             }
 
             fragment WorkingOnFragment on WorkOnTask { 
@@ -232,15 +273,13 @@ delete_task = """mutation deleteTask($id: Int!) {
 
 update_task = """mutation updateTask(
     $id: Int!, $title: String, $description: String, 
-    $category: String, $flag: String) {  
+    $flag: String) {  
         updateTask(input: {
             id: $id,
             patch: {
                 title: $title, 
-                category: 
-                $category, 
-                description: $description, 
                 flag: $flag
+                description: $description, 
             }
         }) 
         {
@@ -250,13 +289,14 @@ update_task = """mutation updateTask(
         }
     }
 
+
     fragment TaskFragment on Task {  
-          id  title  ctfId  padUrl  description flag  
-        solved  category  workOnTasks { 
+        id  title  ctfId  padUrl  description  flag solved
+        workOnTasks {   
             nodes { 
                 ...WorkingOnFragment
-            }      
-        } 
+            }
+        }
     }
 
     fragment WorkingOnFragment on WorkOnTask {
@@ -300,11 +340,26 @@ start_working_on = """mutation startWorkingOn($taskId: Int!) {
 
     fragment TaskFragment on Task {  
           id  title  ctfId  padUrl  description  flag  solved  
-        category  workOnTasks {    
+        tags  workOnTasks {    
             nodes {
                 ...WorkingOnFragment          
             }      
         }  
+    }
+
+    fragment AssignedTagsFragment on AssignedTag {
+      nodeId
+      taskId
+      tagId
+      tag {
+        ...TagFragment
+      }
+    }
+
+    fragment TagFragment on Tag {
+      nodeId
+      id
+      tag
     }
 
     fragment WorkingOnFragment on WorkOnTask {  
@@ -318,7 +373,6 @@ start_working_on = """mutation startWorkingOn($taskId: Int!) {
     }"""
 
 
-
 assign_user = """
 mutation assignUserToTask($taskId: Int!, $userId: Int!) {
   assignUserToTask(input: {taskId: $taskId, userId: $userId}) {
@@ -330,25 +384,35 @@ mutation assignUserToTask($taskId: Int!, $userId: Int!) {
   }
 }
 
-fragment TaskFragment on Task {
+fragment TaskFragment on Task {  
+    id  title  ctfId  padUrl  description  flag solved
+    assignedTags {
+      nodes {
+        ...AssignedTagsFragment
+      }
+    }
+    workOnTasks {   
+        nodes { 
+            ...WorkingOnFragment
+        }
+    }
+}
+
+fragment AssignedTagsFragment on AssignedTag {
+  nodeId
+  taskId
+  tagId
+  tag {
+    ...TagFragment
+  }
+}
+
+fragment TagFragment on Tag {
   nodeId
   id
-  title
-  ctfId
-  padUrl
-  description
-  flag
-  solved
-  category
-  workOnTasks {
-    nodes {
-      ...WorkingOnFragment
-      __typename
-    }
-    __typename
-  }
-  __typename
+  tag
 }
+
 
 fragment WorkingOnFragment on WorkOnTask {
   nodeId
@@ -382,25 +446,35 @@ mutation unassignUserFromTask($taskId: Int!, $userId: Int!) {
   }
 }
 
-fragment TaskFragment on Task {
+fragment TaskFragment on Task {  
+    id  title  ctfId  padUrl  description  flag solved
+    assignedTags {
+      nodes {
+        ...AssignedTagsFragment
+      }
+    }
+    workOnTasks {   
+        nodes { 
+            ...WorkingOnFragment
+        }
+    }
+}
+
+fragment AssignedTagsFragment on AssignedTag {
+  nodeId
+  taskId
+  tagId
+  tag {
+    ...TagFragment
+  }
+}
+
+fragment TagFragment on Tag {
   nodeId
   id
-  title
-  ctfId
-  padUrl
-  description
-  flag
-  solved
-  category
-  workOnTasks {
-    nodes {
-      ...WorkingOnFragment
-      __typename
-    }
-    __typename
-  }
-  __typename
+  tag
 }
+
 
 fragment WorkingOnFragment on WorkOnTask {
   nodeId
@@ -433,13 +507,34 @@ stop_working_on = """mutation stopWorkingOn($taskId: Int!) {
     }
 
     fragment TaskFragment on Task {  
-          id  title  ctfId  padUrl  description  flag  solved  
-        category  workOnTasks {    
-            nodes {
-                ...WorkingOnFragment          
-            }      
-        }  
+        id  title  ctfId  padUrl  description  flag solved
+        assignedTags {
+          nodes {
+            ...AssignedTagsFragment
+          }
+        }
+        workOnTasks {   
+            nodes { 
+                ...WorkingOnFragment
+            }
+        }
     }
+
+    fragment AssignedTagsFragment on AssignedTag {
+      nodeId
+      taskId
+      tagId
+      tag {
+        ...TagFragment
+      }
+    }
+
+    fragment TagFragment on Tag {
+      nodeId
+      id
+      tag
+    }
+
 
     fragment WorkingOnFragment on WorkOnTask {  
           profileId  profile {    
@@ -463,14 +558,35 @@ subscribe_flags = """subscription subscribeToFlag {
     }
 }
 
-fragment TaskFragment on Task {
-      id  title  ctfId  padUrl  description flag  solved  category  
-    workOnTasks {    
-        nodes {
+fragment TaskFragment on Task {  
+    id  title  ctfId  padUrl  description  flag solved
+    assignedTags {
+      nodes {
+        ...AssignedTagsFragment
+      }
+    }
+    workOnTasks {   
+        nodes { 
             ...WorkingOnFragment
-        }      
+        }
     }
 }
+
+fragment AssignedTagsFragment on AssignedTag {
+  nodeId
+  taskId
+  tagId
+  tag {
+    ...TagFragment
+  }
+}
+
+fragment TagFragment on Tag {
+  nodeId
+  id
+  tag
+}
+
 
 fragment WorkingOnFragment on WorkOnTask {  
       profileId  profile {    
@@ -577,22 +693,35 @@ subscribe_to_ctf = """
       profileId
     }
 
-    fragment TaskFragment on Task {
-      nodeId
-      id
-      title
-      ctfId
-      padUrl
-      description
-      flag
-      solved
-      category
-      workOnTasks {
-        nodes {
-          ...WorkingOnFragment
+    fragment TaskFragment on Task {  
+        id  title  ctfId  padUrl  description  flag solved
+        assignedTags {
+          nodes {
+            ...AssignedTagsFragment
+          }
         }
+        workOnTasks {   
+            nodes { 
+                ...WorkingOnFragment
+            }
+        }
+    }
+
+    fragment AssignedTagsFragment on AssignedTag {
+      nodeId
+      taskId
+      tagId
+      tag {
+        ...TagFragment
       }
     }
+
+    fragment TagFragment on Tag {
+      nodeId
+      id
+      tag
+    }
+
 
     fragment CtfFragment on Ctf {
         nodeId id granted ctfUrl ctftimeUrl description endTime 
@@ -619,22 +748,35 @@ subscribe_to_task = """
       }
     }
 
-    fragment TaskFragment on Task {
-      nodeId
-      id
-      title
-      ctfId
-      padUrl
-      description
-      flag
-      solved
-      category
-      workOnTasks {
-        nodes {
-          ...WorkingOnFragment
+    fragment TaskFragment on Task {  
+        id  title  ctfId  padUrl  description  flag solved
+        assignedTags {
+          nodes {
+            ...AssignedTagsFragment
+          }
         }
+        workOnTasks {   
+            nodes { 
+                ...WorkingOnFragment
+            }
+        }
+    }
+
+    fragment AssignedTagsFragment on AssignedTag {
+      nodeId
+      taskId
+      tagId
+      tag {
+        ...TagFragment
       }
     }
+
+    fragment TagFragment on Tag {
+      nodeId
+      id
+      tag
+    }
+
     fragment ProfileFragment on Profile {
       id
       username
@@ -665,4 +807,3 @@ fragment ProfileFragment on Profile {
   id username color description role 
 }
 """
-
