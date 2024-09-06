@@ -252,6 +252,70 @@ def setup():
     async def ctfnote_update_assigned_player(ctx: discord_slash.SlashContext, playername: discord.member.Member):
         await ctfnote.assign_player(ctx, playername)
 
+    @slash.slash(name="assign",
+                 description="Assign player as working on this challenge",
+                 guild_ids=[config.bot.guild],
+                 options=[
+                    create_option(name="playername",
+                        description="The player that is working on this challenge",
+                        option_type=SlashCommandOptionType.USER,
+                        required=True),
+                 ])
+    @require_role(config.mgmt.player_role)
+    async def update_assigned_player(ctx: discord_slash.SlashContext, playername: discord.member.Member):
+        await ctx.defer()
+        if ctx.channel.topic:
+            status, players =  ctx.channel.topic.split(" | ")
+            players = set(players[1:-1].split(", "))
+        else:
+            status, players = "unsolved", set()
+        players.add(playername.name)
+        players = ", ".join(players)
+        await ctx.channel.edit(topic = f"{status} | [{players}]", position=999)
+        await ctx.send(f"{playername.name} is now working on this challenge")
+
+    @slash.slash(name="usassign",
+                 description="Unassign player as no longer working on this challenge",
+                 guild_ids=[config.bot.guild],
+                 options=[
+                    create_option(name="playername",
+                        description="The player that is no longer working on this challenge",
+                        option_type=SlashCommandOptionType.USER,
+                        required=True),
+                 ])
+    @require_role(config.mgmt.player_role)
+    async def update_unassigned_player(ctx: discord_slash.SlashContext, playername: discord.member.Member):
+        await ctx.defer()
+        if ctx.channel.topic:
+            status, players =  ctx.channel.topic.split(" | ")
+            players = set(players[1:-1].split(", "))
+        else:
+            status, players = "unsolved", set()
+        players.discard(playername.name)
+        players = ", ".join(players)
+        await ctx.channel.edit(topic = f"{status} | [{players}]", position=999)
+        await ctx.send(f"{playername.name} is no longer working on this challenge")
+
+    @slash.slash(name="status",
+                description="Status of all challenges",
+                guild_ids=[config.bot.guild],
+                options=[]
+                )
+    @require_role(config.mgmt.player_role)
+    async def get_status(ctx: discord_slash.SlashContext):
+        if ctx.guild is None:
+            return
+        await ctx.defer()
+        status_msg = "```\n"
+        for cat in ctx.guild.categories:
+            if cat.name not in config.mgmt.categories:
+                continue
+            status_msg += f"{cat.name}\n"
+            for chan in cat.text_channels:
+                status_msg += (f"{chan.name}: {chan.topic}\n")
+        status_msg += "```"
+        await ctx.send(status_msg)
+
     @slash.slash(name="ctfnote_register_myself",
                  description="Register yourself a ctfnote account",
                  guild_ids=[config.bot.guild],

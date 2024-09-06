@@ -470,11 +470,11 @@ class CTFNote:
 
 # These credentials can be changed with a bot command
 # URL _must_ end with a slash
-URL = "https://cyanpencil.xyz/note/"
-admin_login = "a"
-admin_pass = "b"
-ctfnote: CTFNote = CTFNote("")
-enabled: bool = False
+URL = "http://host.docker.internal:8080/"
+admin_login = "admin"
+admin_pass = "admin"
+ctfnote: CTFNote = CTFNote(URL)
+enabled: bool = True
 
 async def login():
     global ctfnote
