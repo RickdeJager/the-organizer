@@ -86,6 +86,7 @@ def setup():
         created = await ctx.guild.create_text_channel(challenge, position=0, category=cat)
         await ctx.send(f"The channel for <#{created.id}> ({category}) was created")
         await ctfnote.add_task(ctx, created, challenge, category, solved_prefix = "✓-", ctfid = ctfid)
+        await get_status(ctx)
 
 
     @slash.slash(name="ctfnote_fixup_channel",
@@ -124,6 +125,7 @@ def setup():
             await msg.pin()
         else:
             await ctx.send("removed flag.")
+        await get_status(ctx)
 
     @slash.slash(name="archive",
                  description="Move all current challenges to a new archive",
@@ -265,14 +267,14 @@ def setup():
     async def update_assigned_player(ctx: discord_slash.SlashContext, playername: discord.member.Member):
         await ctx.defer()
         if ctx.channel.topic:
-            status, players =  ctx.channel.topic.split(" | ")
-            players = set(players[1:-1].split(", "))
+            players = set(ctx.channel.topic.split(", "))
         else:
-            status, players = "unsolved", set()
+            players = set()
         players.add(playername.name)
-        players = ", ".join(players)
-        await ctx.channel.edit(topic = f"{status} | [{players}]", position=999)
+        await ctx.channel.edit(topic = ", ".join(players), position=999)
         await ctx.send(f"{playername.name} is now working on this challenge")
+        await get_status(ctx)
+
 
     @slash.slash(name="usassign",
                  description="Unassign player as no longer working on this challenge",
@@ -287,34 +289,35 @@ def setup():
     async def update_unassigned_player(ctx: discord_slash.SlashContext, playername: discord.member.Member):
         await ctx.defer()
         if ctx.channel.topic:
-            status, players =  ctx.channel.topic.split(" | ")
-            players = set(players[1:-1].split(", "))
+            players = set(ctx.channel.topic.split(", "))
         else:
-            status, players = "unsolved", set()
+            players = set()
         players.discard(playername.name)
-        players = ", ".join(players)
-        await ctx.channel.edit(topic = f"{status} | [{players}]", position=999)
+        await ctx.channel.edit(topic = ", ".join(players), position=999)
         await ctx.send(f"{playername.name} is no longer working on this challenge")
+        await get_status(ctx)
 
-    @slash.slash(name="status",
-                description="Status of all challenges",
-                guild_ids=[config.bot.guild],
-                options=[]
-                )
-    @require_role(config.mgmt.player_role)
+
     async def get_status(ctx: discord_slash.SlashContext):
-        if ctx.guild is None:
-            return
-        await ctx.defer()
-        status_msg = "```\n"
+        transcript_channel: discord.TextChannel = bot.get_channel(config.mgmt.transcript_channel)
+        status_msg = "```ansi\n"
         for cat in ctx.guild.categories:
             if cat.name not in config.mgmt.categories:
                 continue
-            status_msg += f"{cat.name}\n"
+            status_msg += "-"*16+"+"+"-"*40 + f"\n\u001b[1;37m{cat.name.upper(): <16}\u001b[0;37m|\n"
             for chan in cat.text_channels:
-                status_msg += (f"{chan.name}: {chan.topic}\n")
-        status_msg += "```"
-        await ctx.send(status_msg)
+                if "✓" in chan.name:
+                    status_msg += (f"{chan.name: <16}| ✅\n")
+                elif chan.topic:
+                    status_msg += (f"{chan.name: <16}| {chan.topic or ''}\n")
+                else:
+                    status_msg += (f"{chan.name: <16}| ❌\n")
+        status_msg += "-"*16+"+"+"-"*40 + "\n```"
+        try:
+            message = await transcript_channel.fetch_message(transcript_channel.last_message_id)
+            await message.edit(content=status_msg)
+        except:
+            await transcript_channel.send(status_msg)
 
     @slash.slash(name="ctfnote_register_myself",
                  description="Register yourself a ctfnote account",
