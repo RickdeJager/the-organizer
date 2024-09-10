@@ -17,6 +17,7 @@ from discord_slash.model import SlashCommandOptionType                          
 
 import traceback
 
+status_dict = {"challs": {}}
 
 def require_role(minreq=None):
     if minreq is None:
@@ -57,6 +58,7 @@ def setup():
     @slash.slash(name="ping", description="Just a test, sleeps for 5 seconds then replies with 'pong'", guild_ids=[config.bot.guild])
     async def ping(ctx: discord_slash.SlashContext):
         await ctx.defer()
+        await update_status(ctx)
         await asyncio.sleep(5)
         await ctx.send("Pong!")
 
@@ -84,9 +86,9 @@ def setup():
             category: str, challenge: str, ctfid = None):
         cat = discord.utils.find(lambda c: c.name == category, ctx.guild.categories)
         created = await ctx.guild.create_text_channel(challenge, position=0, category=cat)
+        status_dict["challs"][challenge] = {"solved": False, "assigned": set(), "category": category}
         await ctx.send(f"The channel for <#{created.id}> ({category}) was created")
         await ctfnote.add_task(ctx, created, challenge, category, solved_prefix = "✓-", ctfid = ctfid)
-        await get_status(ctx)
 
 
     @slash.slash(name="ctfnote_fixup_channel",
@@ -115,8 +117,10 @@ def setup():
     @require_role(config.mgmt.player_role)
     async def mark_solved(ctx: discord_slash.SlashContext, flag: typing.Optional[str] = None):
         await ctx.defer()
-        if not ctx.channel.name.startswith("✓"):
-            await ctx.channel.edit(name=f"✓-{ctx.channel.name}", position=999)
+        channel_name = ctx.channel.name
+        if not channel_name.startswith("✓"):
+            await ctx.channel.edit(name=f"✓-{channel_name}", position=999)
+            status_dict["challs"][channel_name]["solved"] = True
 
         ctfnote_res = await ctfnote.update_flag(ctx, flag)
 
@@ -125,7 +129,6 @@ def setup():
             await msg.pin()
         else:
             await ctx.send("removed flag.")
-        await get_status(ctx)
 
     @slash.slash(name="archive",
                  description="Move all current challenges to a new archive",
@@ -266,17 +269,11 @@ def setup():
     @require_role(config.mgmt.player_role)
     async def update_assigned_player(ctx: discord_slash.SlashContext, playername: discord.member.Member):
         await ctx.defer()
-        if ctx.channel.topic:
-            players = set(ctx.channel.topic.split(", "))
-        else:
-            players = set()
-        players.add(playername.name)
-        await ctx.channel.edit(topic = ", ".join(players), position=999)
+        status_dict["challs"][ctx.channel.name]["assigned"].add(playername.name)
         await ctx.send(f"{playername.name} is now working on this challenge")
-        await get_status(ctx)
 
 
-    @slash.slash(name="usassign",
+    @slash.slash(name="unassign",
                  description="Unassign player as no longer working on this challenge",
                  guild_ids=[config.bot.guild],
                  options=[
@@ -288,31 +285,25 @@ def setup():
     @require_role(config.mgmt.player_role)
     async def update_unassigned_player(ctx: discord_slash.SlashContext, playername: discord.member.Member):
         await ctx.defer()
-        if ctx.channel.topic:
-            players = set(ctx.channel.topic.split(", "))
-        else:
-            players = set()
-        players.discard(playername.name)
-        await ctx.channel.edit(topic = ", ".join(players), position=999)
+        status_dict["challs"][ctx.channel.name]["assigned"].discard(playername.name)
         await ctx.send(f"{playername.name} is no longer working on this challenge")
-        await get_status(ctx)
 
 
-    async def get_status(ctx: discord_slash.SlashContext):
+    async def update_status(ctx: discord_slash.SlashContext):
         transcript_channel: discord.TextChannel = bot.get_channel(config.mgmt.transcript_channel)
         status_msg = "```ansi\n"
         for cat in ctx.guild.categories:
             if cat.name not in config.mgmt.categories:
                 continue
-            status_msg += "-"*16+"+"+"-"*40 + f"\n\u001b[1;37m{cat.name.upper(): <16}\u001b[0;37m|\n"
-            for chan in cat.text_channels:
-                if "✓" in chan.name:
-                    status_msg += (f"{chan.name: <16}| ✅\n")
-                elif chan.topic:
-                    status_msg += (f"{chan.name: <16}| {chan.topic or ''}\n")
+            status_msg += "-"*20+"+"+"-"*40 + f"\n\u001b[1;37m{cat.name.upper(): <20}\u001b[0;37m|\n"
+            for name, chall in filter(lambda x: x[1]["category"] == cat, status_dict["challs"].items()):
+                if chall["solved"]:
+                    status_msg += (f"{name: <20}| ✅\n")
+                elif chall["assigned"]:
+                    status_msg += (f"{name: <20}| {', '.join(chall['assigned']) or ''}\n")
                 else:
-                    status_msg += (f"{chan.name: <16}| ❌\n")
-        status_msg += "-"*16+"+"+"-"*40 + "\n```"
+                    status_msg += (f"{name: <20}| ❌\n")
+        status_msg += "-"*20+"+"+"-"*40 + "\n```"
         try:
             message = await transcript_channel.fetch_message(transcript_channel.last_message_id)
             await message.edit(content=status_msg)
