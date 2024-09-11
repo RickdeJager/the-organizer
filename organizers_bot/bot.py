@@ -9,15 +9,15 @@ import io
 import logging
 import typing
 import os
+import json
 
 import discord                                                                  # type: ignore
 import discord_slash                                                            # type: ignore
 from discord_slash.utils.manage_commands import create_option, create_choice    # type: ignore
 from discord_slash.model import SlashCommandOptionType                          # type: ignore
+from discord.ext import tasks                                                   # type: ignore
 
 import traceback
-
-status_dict = {"challs": {cat: {} for cat in config.mgmt.categories}}
 
 def require_role(minreq=None):
     if minreq is None:
@@ -54,11 +54,100 @@ def setup():
             guild=guild,
             scopes=["bot", "applications.commands"]
             ))
+        
+    status_dict = {"type": "jeopardy", "challs": {cat: {} for cat in config.mgmt.categories}}
+
+    @tasks.loop(seconds=10)
+    async def display_status():
+        print("displaying status")
+        transcript_channel: discord.TextChannel = bot.get_channel(config.mgmt.transcript_channel)
+        status_msg = "```ansi\n"
+        for cat in config.mgmt.categories:
+            status_msg += "-"*20+"-+"+"-"*40 + f"\n\u001b[1;37m{cat.upper(): <20} \u001b[0;37m|\n"
+            for name, chall in status_dict["challs"][cat].items():
+                if chall["solved"]:
+                    status_msg += (f"{name: <20} | ✅\n")
+                elif chall["assigned"]:
+                    status_msg += (f"{name: <20} | {', '.join(chall['assigned']) or ''}\n")
+                else:
+                    status_msg += (f"{name: <20} | ❌\n")
+                if status_dict["type"] == "AD":
+                    for vuln_name, vuln in chall["vulns"].items():
+                        status_msg += " "*10 + f"{vuln_name: <10} | patch: {'✅' if vuln['patch'] else '❌'} | exploit: {'✅' if vuln['exploit'] else '❌'}\n"
+        status_msg += "-"*20+"-+"+"-"*40 + "\n```"
+        try:
+            message = await transcript_channel.fetch_message(transcript_channel.last_message_id)
+            await message.edit(content=status_msg)
+        except:
+            await transcript_channel.send(status_msg)
+
+    @slash.slash(name="start",
+                description="Start ctf",
+                guild_ids=[config.bot.guild],
+                options=[
+                    create_option(name="ctf_type",
+                                    description="What kind of ctf",
+                                    option_type=SlashCommandOptionType.STRING,
+                                    required=True,
+                                    choices={"Jeopardy": "Jeopardy", "AD": "AD"}
+                                    )])
+    @require_role(config.mgmt.player_role)
+    async def start_ctf(ctx: discord_slash.SlashContext, ctf_type: str):
+        status_dict["type"] = ctf_type
+        display_status.start()
+        await ctx.send(f"CTF started, type: {ctf_type}")
+
+    @slash.slash(name="vuln",
+                description="Start ctf",
+                guild_ids=[config.bot.guild],
+                options=[
+                    create_option(name="vuln_name",
+                                    description="Name of the vuln",
+                                    option_type=SlashCommandOptionType.STRING,
+                                    required=True
+                                    )])
+    @require_role(config.mgmt.player_role)
+    async def add_vuln(ctx: discord_slash.SlashContext, vuln_name: str):
+        status_dict["challs"][ctx.channel.category.name][ctx.channel.name]["vulns"][vuln_name] = {"patch": False, "exploit": False}
+        await ctx.send(f"Added vuln: {vuln_name}")
+
+    @slash.slash(name="patch",
+                description="Mark a vuln as patched",
+                guild_ids=[config.bot.guild],
+                options=[
+                    create_option(name="vuln_name",
+                                    description="Name of the vuln",
+                                    option_type=SlashCommandOptionType.STRING,
+                                    required=True
+                                    )])
+    @require_role(config.mgmt.player_role)
+    async def mark_patched(ctx: discord_slash.SlashContext, vuln_name: str):
+        if vuln_name in status_dict["challs"][ctx.channel.category.name][ctx.channel.name]["vulns"]:
+            status_dict["challs"][ctx.channel.category.name][ctx.channel.name]["vulns"][vuln_name]["patch"] = True
+            await ctx.send(f"Marked vuln {vuln_name} as patched")
+        else:
+            await ctx.send(f"Vuln {vuln_name} not found. Currently marked vulns: {', '.join(status_dict['challs'][ctx.channel.category.name][ctx.channel.name]['vulns'].keys())}")
+    
+    @slash.slash(name="exploit",
+                description="Mark a vuln as exploited",
+                guild_ids=[config.bot.guild],
+                options=[
+                    create_option(name="vuln_name",
+                                    description="Name of the vuln",
+                                    option_type=SlashCommandOptionType.STRING,
+                                    required=True
+                                    )])
+    @require_role(config.mgmt.player_role)
+    async def mark_exploited(ctx: discord_slash.SlashContext, vuln_name: str):
+        if vuln_name in status_dict["challs"][ctx.channel.category.name][ctx.channel.name]["vulns"]:
+            status_dict["challs"][ctx.channel.category.name][ctx.channel.name]["vulns"][vuln_name]["exploit"] = True
+            await ctx.send(f"Marked vuln {vuln_name} as exploited")
+        else:
+            await ctx.send(f"Vuln {vuln_name} not found. Currently marked vulns: {', '.join(status_dict['challs'][ctx.channel.category.name][ctx.channel.name]['vulns'].keys())}")
 
     @slash.slash(name="ping", description="Just a test, sleeps for 5 seconds then replies with 'pong'", guild_ids=[config.bot.guild])
     async def ping(ctx: discord_slash.SlashContext):
         await ctx.defer()
-        await update_status(ctx)
         await asyncio.sleep(5)
         await ctx.send("Pong!")
 
@@ -86,7 +175,7 @@ def setup():
             category: str, challenge: str, ctfid = None):
         cat = discord.utils.find(lambda c: c.name == category, ctx.guild.categories)
         created = await ctx.guild.create_text_channel(challenge, position=0, category=cat)
-        status_dict["challs"][category][challenge] = {"solved": False, "assigned": set()}
+        status_dict["challs"][category][challenge] = {"solved": False, "assigned": set(), "vulns": {}}
         await ctx.send(f"The channel for <#{created.id}> ({category}) was created")
         await ctfnote.add_task(ctx, created, challenge, category, solved_prefix = "✓-", ctfid = ctfid)
 
@@ -150,6 +239,8 @@ def setup():
                 continue
             for chan in cat.text_channels:
                 await chan.edit(category=new_cat)
+        status_dict["challs"] = {cat: {} for cat in config.mgmt.categories}
+        display_status.cancel()
         await ctx.send(f"Archived {name}")
 
     @slash.slash(name="export",
@@ -267,7 +358,6 @@ def setup():
                  ])
     @require_role(config.mgmt.player_role)
     async def update_assigned_player(ctx: discord_slash.SlashContext, playername: discord.member.Member):
-        await ctx.defer()
         status_dict["challs"][ctx.channel.category.name][ctx.channel.name]["assigned"].add(playername.name)
         await ctx.send(f"{playername.name} is now working on this challenge")
 
@@ -283,29 +373,8 @@ def setup():
                  ])
     @require_role(config.mgmt.player_role)
     async def update_unassigned_player(ctx: discord_slash.SlashContext, playername: discord.member.Member):
-        await ctx.defer()
         status_dict["challs"][ctx.channel.category.name][ctx.channel.name]["assigned"].discard(playername.name)
         await ctx.send(f"{playername.name} is no longer working on this challenge")
-
-
-    async def update_status(ctx: discord_slash.SlashContext):
-        transcript_channel: discord.TextChannel = bot.get_channel(config.mgmt.transcript_channel)
-        status_msg = "```ansi\n"
-        for cat in config.mgmt.categories:
-            status_msg += "-"*20+" +"+"-"*40 + f"\n\u001b[1;37m{cat.name.upper(): <20} \u001b[0;37m|\n"
-            for name, chall in status_dict["challs"][cat].items():
-                if chall["solved"]:
-                    status_msg += (f"{name: <20} | ✅\n")
-                elif chall["assigned"]:
-                    status_msg += (f"{name: <20} | {', '.join(chall['assigned']) or ''}\n")
-                else:
-                    status_msg += (f"{name: <20} | ❌\n")
-        status_msg += "-"*20+" +"+"-"*40 + "\n```"
-        try:
-            message = await transcript_channel.fetch_message(transcript_channel.last_message_id)
-            await message.edit(content=status_msg)
-        except:
-            await transcript_channel.send(status_msg)
 
     @slash.slash(name="ctfnote_register_myself",
                  description="Register yourself a ctfnote account",

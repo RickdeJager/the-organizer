@@ -19,7 +19,9 @@ from . import queries
 import discord
 import discord_slash                                                            # type: ignore
 import json
+import pathlib
 from . import config
+config.load(pathlib.Path("config.json"))
 
 log = logging.getLogger("CTFNote")
 
