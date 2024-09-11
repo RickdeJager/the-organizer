@@ -17,7 +17,7 @@ from discord_slash.model import SlashCommandOptionType                          
 
 import traceback
 
-status_dict = {"challs": {}}
+status_dict = {"challs": {cat: {} for cat in config.mgmt.categories}}
 
 def require_role(minreq=None):
     if minreq is None:
@@ -86,7 +86,7 @@ def setup():
             category: str, challenge: str, ctfid = None):
         cat = discord.utils.find(lambda c: c.name == category, ctx.guild.categories)
         created = await ctx.guild.create_text_channel(challenge, position=0, category=cat)
-        status_dict["challs"][challenge] = {"solved": False, "assigned": set(), "category": category}
+        status_dict["challs"][category][challenge] = {"solved": False, "assigned": set()}
         await ctx.send(f"The channel for <#{created.id}> ({category}) was created")
         await ctfnote.add_task(ctx, created, challenge, category, solved_prefix = "✓-", ctfid = ctfid)
 
@@ -117,10 +117,9 @@ def setup():
     @require_role(config.mgmt.player_role)
     async def mark_solved(ctx: discord_slash.SlashContext, flag: typing.Optional[str] = None):
         await ctx.defer()
-        channel_name = ctx.channel.name
-        if not channel_name.startswith("✓"):
-            await ctx.channel.edit(name=f"✓-{channel_name}", position=999)
-            status_dict["challs"][channel_name]["solved"] = True
+        if not ctx.channel.name.startswith("✓"):
+            await ctx.channel.edit(name=f"✓-{ctx.channel.name}", position=999)
+            status_dict["challs"][ctx.channel.category.name][ctx.channel.name]["solved"] = True
 
         ctfnote_res = await ctfnote.update_flag(ctx, flag)
 
@@ -269,7 +268,7 @@ def setup():
     @require_role(config.mgmt.player_role)
     async def update_assigned_player(ctx: discord_slash.SlashContext, playername: discord.member.Member):
         await ctx.defer()
-        status_dict["challs"][ctx.channel.name]["assigned"].add(playername.name)
+        status_dict["challs"][ctx.channel.category.name][ctx.channel.name]["assigned"].add(playername.name)
         await ctx.send(f"{playername.name} is now working on this challenge")
 
 
@@ -285,25 +284,23 @@ def setup():
     @require_role(config.mgmt.player_role)
     async def update_unassigned_player(ctx: discord_slash.SlashContext, playername: discord.member.Member):
         await ctx.defer()
-        status_dict["challs"][ctx.channel.name]["assigned"].discard(playername.name)
+        status_dict["challs"][ctx.channel.category.name][ctx.channel.name]["assigned"].discard(playername.name)
         await ctx.send(f"{playername.name} is no longer working on this challenge")
 
 
     async def update_status(ctx: discord_slash.SlashContext):
         transcript_channel: discord.TextChannel = bot.get_channel(config.mgmt.transcript_channel)
         status_msg = "```ansi\n"
-        for cat in ctx.guild.categories:
-            if cat.name not in config.mgmt.categories:
-                continue
-            status_msg += "-"*20+"+"+"-"*40 + f"\n\u001b[1;37m{cat.name.upper(): <20}\u001b[0;37m|\n"
-            for name, chall in filter(lambda x: x[1]["category"] == cat, status_dict["challs"].items()):
+        for cat in config.mgmt.categories:
+            status_msg += "-"*20+" +"+"-"*40 + f"\n\u001b[1;37m{cat.name.upper(): <20} \u001b[0;37m|\n"
+            for name, chall in status_dict["challs"][cat].items():
                 if chall["solved"]:
-                    status_msg += (f"{name: <20}| ✅\n")
+                    status_msg += (f"{name: <20} | ✅\n")
                 elif chall["assigned"]:
-                    status_msg += (f"{name: <20}| {', '.join(chall['assigned']) or ''}\n")
+                    status_msg += (f"{name: <20} | {', '.join(chall['assigned']) or ''}\n")
                 else:
-                    status_msg += (f"{name: <20}| ❌\n")
-        status_msg += "-"*20+"+"+"-"*40 + "\n```"
+                    status_msg += (f"{name: <20} | ❌\n")
+        status_msg += "-"*20+" +"+"-"*40 + "\n```"
         try:
             message = await transcript_channel.fetch_message(transcript_channel.last_message_id)
             await message.edit(content=status_msg)
