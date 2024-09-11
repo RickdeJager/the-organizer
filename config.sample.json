@@ -23,5 +23,11 @@
     "archive": {
         "url": "https://example.com/",
         "secret": "hex-encoded secret"
+    },
+    "ctfnote":{
+        "URL": "https://example.com/",
+        "admin_login": "",
+        "admin_pass": "",
+        "enabled": false
     }
 }

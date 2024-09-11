@@ -19,6 +19,7 @@ from . import queries
 import discord
 import discord_slash                                                            # type: ignore
 import json
+from . import config
 
 log = logging.getLogger("CTFNote")
 
@@ -467,14 +468,11 @@ class CTFNote:
         loop.create_task(start_listening(queries.subscribe_to_ctf, "ctf_event"))
         loop.create_task(start_listening(queries.subscribe_to_task, "task_event"))
 
-
-# These credentials can be changed with a bot command
-# URL _must_ end with a slash
-URL = "http://host.docker.internal:8080/"
-admin_login = "admin"
-admin_pass = "admin"
+URL = config.ctfnote.URL
+admin_login = config.ctfnote.admin_login
+admin_pass = config.ctfnote.admin_pass
+enabled: bool = config.ctfnote.enabled
 ctfnote: CTFNote = CTFNote(URL)
-enabled: bool = True
 
 async def login():
     global ctfnote

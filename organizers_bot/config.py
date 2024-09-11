@@ -29,8 +29,15 @@ class ArchiveConfig:
     url: str
     secret: bytes
 
+@dataclasses.dataclass
+class CtfNoteConfig:
+    URL: str
+    admin_login: str
+    admin_pass: str
+    enabled: bool
+
 def load(filename: pathlib.Path):
-    global is_loaded, bot, mgmt, s3, archive
+    global is_loaded, bot, mgmt, s3, archive, ctfnote
     with filename.open("r") as configfile:
         conf = json.load(configfile)
         bot = BotConfig(
@@ -55,6 +62,12 @@ def load(filename: pathlib.Path):
             conf['archive']['url'],
             bytes.fromhex(conf['archive']['secret']),
         )
+        ctfnote = CtfNoteConfig(
+            conf['ctfnote']['URL'],
+            conf['ctfnote']['admin_login'],
+            conf['ctfnote']['admin_pass'],
+            conf['ctfnote']['enabled']
+        )
     is_loaded = True
 
 logging.basicConfig(level=logging.INFO)
@@ -63,3 +76,4 @@ bot: BotConfig
 mgmt: ManagementConfig
 s3: S3Config
 archive: ArchiveConfig
+ctfnote: CtfNoteConfig
