@@ -203,7 +203,7 @@ def setup():
             category: str, challenge: str, ctfid = None):
         cat = discord.utils.find(lambda c: c.name == category, ctx.guild.categories)
         created = await ctx.guild.create_text_channel(challenge, position=0, category=cat)
-        status_dict["challs"][category][challenge] = {"solved": False, "assigned": set(), "vulns": {}}
+        status_dict["challs"][category][created.name] = {"solved": False, "assigned": set(), "vulns": {}}
         await ctx.send(f"The channel for <#{created.id}> ({category}) was created")
         await ctfnote.add_task(ctx, created, challenge, category, solved_prefix = "✓-", ctfid = ctfid)
 
