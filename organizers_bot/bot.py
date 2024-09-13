@@ -235,8 +235,8 @@ def setup():
     async def mark_solved(ctx: discord_slash.SlashContext, flag: typing.Optional[str] = None):
         await ctx.defer()
         if not ctx.channel.name.startswith("✓"):
-            await ctx.channel.edit(name=f"✓-{ctx.channel.name}", position=999)
             status_dict["challs"][ctx.channel.category.name][ctx.channel.name]["solved"] = True
+            await ctx.channel.edit(name=f"✓-{ctx.channel.name}", position=999)
 
         ctfnote_res = await ctfnote.update_flag(ctx, flag)
 
