@@ -57,30 +57,23 @@ def setup():
         
     status_dict = {"type": "jeopardy", "challs": {cat: {} for cat in config.mgmt.categories}}
 
-    @tasks.loop(seconds=10)
+    @tasks.loop(seconds=15)
     async def display_status():
-        guild = bot.get_guild(config.bot.guild)
         transcript_channel: discord.TextChannel = bot.get_channel(config.mgmt.transcript_channel)
         status_msg = "```ansi\n"
-        for cat in guild.categories:
-            if cat.name not in config.mgmt.categories: continue
-            status_msg += "-"*20+"-+"+"-"*40 + f"\n\u001b[1;37m{cat.name.upper(): <20} \u001b[0;37m|\n"
-            for chan in cat.text_channels:
-                chall = status_dict["challs"][cat.name][chan.name]
-                tmp_status = ""
+        for cat in config.mgmt.categories:
+            status_msg += "-"*30+"-+"+"-"*50 + f"\n\u001b[1;37m{cat.upper(): <30} \u001b[0;37m|\n"
+            for name, chall in status_dict["challs"][cat].items():
                 if chall["solved"]:
-                    tmp_status += (f"{chan.name: <20} | ✅\n")
+                    status_msg += (f"{name: <{30}} | ✅\n")
                 elif chall["assigned"]:
-                    tmp_status += (f"{chan.name: <20} | {', '.join(chall['assigned']) or ''}\n")
+                    status_msg += (f"{name: <{30}} | {', '.join(chall['assigned']) or ''}\n")
                 else:
-                    tmp_status += (f"{chan.name: <20} | ❌\n")
+                    status_msg += (f"{name: <{30}} | ❌\n")
                 if status_dict["type"] == "AD":
                     for vuln_name, vuln in chall["vulns"].items():
-                        tmp_status += " "*10 + f"{vuln_name: <10} | patch: {'✅' if vuln['patch'] else '❌'} | exploit: {'✅' if vuln['exploit'] else '❌'}\n"
-                
-                status_msg += tmp_status
-                chan.edit(topic=tmp_status, position=999)
-        status_msg += "-"*20+"-+"+"-"*40 + "\n```"
+                        status_msg += " "*10 + f"{vuln_name: <20} | patch: {'✅' if vuln['patch'] else '❌'} | exploit: {'✅' if vuln['exploit'] else '❌'}\n"
+        status_msg += "-"*30+"-+"+"-"*50 + "\n```"
         try:
             message = await transcript_channel.fetch_message(transcript_channel.last_message_id)
             await message.edit(content=status_msg)
@@ -100,23 +93,34 @@ def setup():
     @require_role(config.mgmt.player_role)
     async def start_ctf(ctx: discord_slash.SlashContext, ctf_type: str):
         status_dict["type"] = ctf_type
-        guild = bot.get_guild(config.bot.guild)
-        for cat in guild.categories:
-            if cat.name not in config.mgmt.categories: continue
-            for chan in cat.text_channels:
-                chall = {"solved": False, "assigned": set(), "vulns": {}}
-                if chan.topic is not None:
-                    state_topic = chan.topic.split("\n")
-                    if "✅" in state_topic[0]: chall["solved"] = True
-                    elif "❌" not in state_topic[0]:
-                        assigned = state_topic[0].split("|")[1].strip()
-                        chall["assigned"] = set(map(lambda x: x.strip(), assigned.split(",")))
-
+        status_dict["challs"] = {cat: {} for cat in config.mgmt.categories}
+        try:
+            transcript_channel: discord.TextChannel = bot.get_channel(config.mgmt.transcript_channel)
+            message = await transcript_channel.fetch_message(transcript_channel.last_message_id)
+            curr_cat = None
+            curr_chal = None
+            chal = None
+            for line in message.content.split("\n"):
+                if line.startswith("-") or line.startswith("`"): continue
+                elif line.startswith("\u001b[1;37m"):
+                    curr_cat = line.split()[0].lstrip("\u001b[1;37m").rstrip("\u001b[0;37m").lower()
+                    curr_chal = None
+                elif line.startswith(" "):
                     if status_dict["type"] == "AD":
-                        for vuln in state_topic[1:]:
-                            vuln_name, patch, exploit = vuln.split("|")
-                            chall["vulns"][vuln_name.strip()] = {"patch": "✅" in patch, "exploit": "✅" in exploit}
-                status_dict["challs"][cat.name][chan.name] = chall
+                        vuln_name, patch, exploit = line.split("|")
+                        chal["vulns"][vuln_name.strip()] = {"patch": "✅" in patch, "exploit": "✅" in exploit}
+                else:
+                    curr_chal, assigned = line.split("|")
+                    curr_chal = curr_chal.strip()
+                    chal = {"solved": False, "assigned": set(), "vulns": {}}
+                    if "✅" in assigned: chal["solved"] = True
+                    elif "❌" not in assigned:
+                        chal["assigned"] = set(map(lambda x: x.strip(), assigned.strip().split(",")))
+                    
+                if curr_cat is not None and curr_chal is not None:
+                    status_dict["challs"][curr_cat][curr_chal] = chal
+        except Exception as e:
+            log.error(f"Failed to load status from channel: {e}", exc_info=True)
 
         display_status.start()
         await ctx.send(f"CTF started, type: {ctf_type}")
@@ -264,6 +268,7 @@ def setup():
             for chan in cat.text_channels:
                 await chan.edit(category=new_cat)
         status_dict["challs"] = {cat: {} for cat in config.mgmt.categories}
+        await display_status()
         display_status.cancel()
         await ctx.send(f"Archived {name}")
 
